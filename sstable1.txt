@@ -1,0 +1,9 @@
+boy=girl 
+car=race 
+dog=cat 
+foo=456 
+frog=vat 
+go=fly 
+log=base 
+new=fashion 
+trishit=bhowmik 

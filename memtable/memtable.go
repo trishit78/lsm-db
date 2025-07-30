@@ -32,3 +32,14 @@ func (m *MemTable) Delete(key string){
 	delete(m.table,key)
 }
 
+
+func (m *MemTable) Data() map[string]string{
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	copy:=make(map[string]string)
+	for k,v:=range m.table{
+		copy[k]=v
+	}
+	return copy
+}
