@@ -84,7 +84,57 @@ import (
 	"lsmdb/wal"
 	"os"
 	"strings"
+	"time"
 )
+
+func getSSTableFiles(manifestPath string) ([]string, error) {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil // no manifest yet
+		}
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	var files []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			files = append(files, strings.TrimSpace(line))
+		}
+	}
+	return files, nil
+}
+
+
+func loadManifest(filename string) ([]string,error){
+	data,err:=os.ReadFile(filename)
+	if err!=nil{
+		if os.IsNotExist(err){
+			return []string{},nil
+		}
+		return nil,err
+	}
+	lines:=strings.Split(strings.TrimSpace(string(data)),"\n")
+	return lines,nil
+
+}
+
+
+func appendToManifest(manifestPath,filename string) error{
+	f, err := os.OpenFile(manifestPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_,err=f.WriteString(filename+"\n")
+	return err
+}
+
+
+
+
+
+
 
 func shouldFlush(m *memtable.MemTable) bool {
 	return len(m.Data()) >= 5 // arbitrary flush condition
@@ -99,15 +149,22 @@ func main(){
 
 	//Initialize memtable before loading SSTables or WAL
 	m:= memtable.NewMemTable()
-//Load from SSTable
-	sstData,err:=sstable.ReadSSTable("sstable1.txt")
-	if err==nil{
-		for k,v:=range sstData{
+//Load from SSTables from manifest
+
+	sstFiles,err:=getSSTableFiles("manifest.txt")
+	if err !=nil{
+		log.Fatalf("Failed to load manifest: %v",err)
+	}
+	for _,file:=range sstFiles{
+		data,err:=sstable.ReadSSTable(file)
+		if err!=nil{
+			log.Fatalf("Failed to read %s: %v",file,err)
+		}
+		for k,v:=range data{
 			m.Put(k,v)
 		}
-	}else if !os.IsNotExist(err) {
-		log.Fatalf("Error reading SSTable: %v",err)
 	}
+	
 	
 
 //  Replay WAL
@@ -123,8 +180,8 @@ func main(){
 	}
 
 	//manual entry
-	key:="trishit"
-	value:="bhowmik"
+	key:="abc"
+	value:="xyz"
 
 	entry:=fmt.Sprintf("%s=%s",key,value)
 	if err:=w.Write([]byte(entry)); err!=nil{
@@ -133,16 +190,45 @@ func main(){
 	m.Put(key,value)
 
 	//read check
-	if val,ok := m.Get("car"); ok{
-		fmt.Println("Recovered val",val)
+	queryKey := "car"
+if val, ok := m.Get(queryKey); ok {
+	fmt.Println("Recovered val from memtable:", val)
+} else {
+	found := false
+	// Search latest to oldest SSTable (reverse order)
+	for i := len(sstFiles) - 1; i >= 0; i-- {
+		data, err := sstable.ReadSSTable(sstFiles[i])
+		if err != nil {
+			log.Printf("Failed to read SSTable %s: %v", sstFiles[i], err)
+			continue
+		}
+		if v, ok := data[queryKey]; ok {
+			fmt.Println("Recovered val from SSTable", sstFiles[i], ":", v)
+			found = true
+			break
+		}
 	}
+	if !found {
+		fmt.Println("Key not found in any SSTable or memtable.")
+	}
+}
+
 
 //flush check
 	if shouldFlush(m){
-		err:=sstable.WriteSSTable("sstable1.txt",m.Data());
+		sstFile := fmt.Sprintf("sstable%d.txt", time.Now().UnixNano())
+		
+
+		err:=sstable.WriteSSTable(sstFile,m.Data());
 		if err!=nil{
 			log.Fatalf("SSTable write failed: %v",err)
 		}
+
+		err=appendToManifest("manifest.txt",sstFile)
+		if err!=nil{
+			log.Fatalf("Manifest update failed: %v",err)
+		}
+
 		m=memtable.NewMemTable()
 	}
 }
