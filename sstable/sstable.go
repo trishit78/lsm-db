@@ -1,14 +1,14 @@
 package sstable
 
 import (
-	"bufio"
+	
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
+	
 	"sync"
 	_ "text/scanner"
 )
@@ -175,51 +175,80 @@ func (s *SSTable) Write(entries []Entry)error{
 	return nil
 }
 
+func (s *SSTable)getAllEntries() ([]Entry,error){
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var entries []Entry
+	offset:=int64(0)
 
-func WriteSSTable(filename string, data map[string]string) error {
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	keys:=make([]string,0,len(data))
-	for k:=range data{
-		keys=append(keys, k)
-	}
-	sort.Strings(keys)
-	writer:=bufio.NewWriter(f)
-	for _,k:= range keys{
-		line:=fmt.Sprintf("%s=%s \n",k,data[k])
-		_,err:= writer.WriteString(line)
-		if err !=nil{
-			return err
+	for{
+		entry,err:=s.readEntry(offset)
+		if err!=nil{
+			if err==io.EOF{
+				break
+			}
+			return nil,err
 		}
+		entries=append(entries,entry)
+		offset+=8+int64(len(entry.Key))+int64(len(entry.Value))
 	}
-	return writer.Flush()
+	return entries,nil
 
 }
 
-func ReadSSTable(path string) (map[string]string,error){
-	file, err:= os.Open(path)
+func (s *SSTable)Delete() error{
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err:=s.dataFile.Close(); err!=nil{
+		return err
+	}
+
+	return os.RemoveAll(s.path)
+}
+
+
+func (s *SSTable) GetPath() string{
+	return s.path
+}
+
+
+
+
+
+
+
+
+
+func Merge(sstables []*SSTable,dataDir string,level int)(*SSTable , error){
+	merged,err := NewSSTable(dataDir,level)
 	if err!=nil{
-		return nil,err
+		return  nil,err
 	}
-	defer file.Close()
-	result:=make(map[string]string)
-	scanner:=bufio.NewScanner(file)
-	for scanner.Scan(){
-		line:=scanner.Text()
-		parts:=strings.SplitN(line,"=",2)
-		if len(parts)==2{
-			result[parts[0]]=parts[1]
+	var allEntries []Entry
+	for _,sst:=range sstables{
+		entries,err:=sst.getAllEntries()
+		if err!=nil{
+			return nil,err
 		}
+		allEntries=append(allEntries, entries...)
+
 	}
 
-	if err:=scanner.Err(); err!=nil{
+	sort.Slice(allEntries,func(i,j int) bool{
+		return string(allEntries[i].Key)< string(allEntries[j].Key)
+	})
+
+	if len(allEntries)>0 {
+		uniqueEntries:=[]Entry{allEntries[0]}
+		for i:=1;i<len(allEntries);i++{
+			if string(allEntries[i].Key) !=string(allEntries[i-1].Key){
+				uniqueEntries=append(uniqueEntries, allEntries[i])
+			}
+		}
+		allEntries=uniqueEntries
+	}
+	if err:=merged.Write(allEntries); err!=nil{
 		return nil,err
 	}
-
-	return result,nil
-
+	return merged,nil
 }
