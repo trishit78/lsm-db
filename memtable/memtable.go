@@ -27,7 +27,7 @@ func (m *MemTable) Put(key,value []byte){
 	m.table[keyStr]= value
 }
 
-func (m *MemTable) Get(key string) ([]byte,bool){
+func (m *MemTable) Get(key []byte) ([]byte,bool){
 	m.mu.RLock()   // locks only for reading 
 	defer m.mu.RUnlock()
 	val, ok:= m.table[string(key)]
@@ -73,4 +73,10 @@ func (it *Iterator) Key() []byte{
 
 func (it *Iterator) Value() []byte{
 	return it.table[it.keys[it.cursor-1]]
+}
+
+func (mt  *MemTable)Size() int{
+	mt.mu.RLock()
+	defer mt.mu.RUnlock()
+	return mt.size
 }

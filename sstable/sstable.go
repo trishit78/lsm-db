@@ -196,6 +196,22 @@ func (s *SSTable)getAllEntries() ([]Entry,error){
 
 }
 
+func (s *SSTable) Get(key []byte) ([]byte,bool){
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	offset,found := s.index[string(key)]
+	if !found{
+		return nil,false
+	}
+	entry,err:=s.readEntry(offset)
+	if err!=nil{
+		return nil,false
+	}
+	return entry.Value,true
+}
+
+
 func (s *SSTable)Delete() error{
 	s.mu.Lock()
 	defer s.mu.Unlock()
