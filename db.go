@@ -1,12 +1,14 @@
 package lsmdb
 
 import (
+	"bytes"
 	"fmt"
 	"lsmdb/memtable"
 	"lsmdb/sstable"
 	"lsmdb/wal"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,6 +75,7 @@ func NewDB(configPath string) (*DB, error){
 		if err!=nil{
 			continue
 		}
+		//timestamp := time.Now().UnixNano()
 		sst,err:=sstable.NewSSTable(config.DataDir,level)
 		if err!=nil{
 			return nil,fmt.Errorf("failed to load sstable at level %d: %v",level,err)
@@ -94,8 +97,16 @@ func NewDB(configPath string) (*DB, error){
 		}
 	}
 	go db.startBackgroundCompaction()
-	return db,nil
+	for i := 0; i < 300; i++ {
+	key := fmt.Sprintf("user%d", i)
+	value := fmt.Sprintf("value%d", i)
+	db.Put([]byte(key), []byte(value))
+}
 
+
+	
+
+return db,nil
 
 }
 
@@ -171,6 +182,9 @@ func (db *DB)compactLevel(level int)error{
 	if len(levelSSTables) < db.config.LevelSize{
 		return nil
 	}
+
+	fmt.Printf("Compacting level %d to level %d\n", level, level+1)
+
 	merged,err:=sstable.Merge(levelSSTables,db.config.DataDir,level+1)
 	if err!=nil{
 		return err
@@ -188,6 +202,9 @@ func (db *DB)compactLevel(level int)error{
 	}
 	newSSTables = append(newSSTables, merged)
 	db.sstables = newSSTables
+
+	fmt.Printf("Merged %d SSTables into level %d\n", len(levelSSTables), level+1)
+
 	return db.compactLevel(level+1)
 
 
@@ -195,6 +212,8 @@ func (db *DB)compactLevel(level int)error{
 
 func (db *DB) flushMemtable() error{
 	sst,err:=sstable.NewSSTable(db.config.DataDir,0)
+	//sst, err := sstable.NewSSTable(db.config.DataDir, 0, time.Now().UnixNano())
+
 	if err!=nil{
 		return err
 	}
@@ -205,11 +224,21 @@ func (db *DB) flushMemtable() error{
 			Key: it.Key(),
 			Value: it.Value(),
 		})
+		
 	}
+
+
+
+	sort.Slice(entries, func(i, j int) bool {
+	return bytes.Compare(entries[i].Key, entries[j].Key) < 0
+})
+	
 	if err:=sst.Write(entries); err!=nil{
 		return err
 	}
 	db.sstables=append(db.sstables, sst)
+	_ = db.compactLevel(0)
+
 
 	db.memtable = memtable.NewMemTable()
 	if err:= db.wal.Clear(); err!=nil{

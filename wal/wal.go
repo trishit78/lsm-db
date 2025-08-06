@@ -123,16 +123,22 @@ func (w *WAL) Recover() ([]struct{Key,Value []byte},error){
 
 		var valueLen uint32
 		if err:=binary.Read(file,binary.LittleEndian,&valueLen); err!=nil{
+			if err== io.EOF{
+				break
+			}
 			return nil,err
 		}
 
 		key:=make([]byte,keyLen)
-		if _,err:=file.Read(key); err!=nil{
-			return nil,err
+		n,err:=file.Read(key)
+		if err!=nil || n!=int(keyLen) {
+			break
 		}
+
 		value :=make([]byte,valueLen)
-		if _,err:=file.Read(value); err!=nil{
-			return nil,err
+		n,err =file.Read(value)
+		if err!=nil || n!=int(valueLen) {
+			break
 		}
 		entries = append(entries, struct{Key,Value []byte}{key,value})
 		offset+=8+int64(keyLen)+int64(valueLen)

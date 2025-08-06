@@ -1,5 +1,12 @@
-mem_table_size: 67108864 # 64MB in bytes
+# mem_table_size: 67108864 # 64MB in bytes
+# data_dir: "./data"
+# max_level: 7
+# level_size: 10
+# compact_interval: 300 # 5 minutes in seconds
+
+
+mem_table_size: 512         # 1KB (small enough to fill quickly and trigger flushes)
 data_dir: "./data"
-max_level: 7
-level_size: 10
-compact_interval: 300 # 5 minutes in seconds
+max_level: 3                 # Fewer levels = faster compaction chain
+level_size: 2               # Trigger compaction after 2 SSTables per level
+compact_interval: 5         # Run compaction every 5 seconds
