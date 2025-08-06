@@ -82,7 +82,7 @@ func (w *WAL) Close() error{
 
 func (w *WAL)Clear() error{
 	w.mu.Lock()
-	defer w.mu.Lock()
+	defer w.mu.Unlock()
 	if err:=w.file.Close(); err!=nil{
 		return err
 	}

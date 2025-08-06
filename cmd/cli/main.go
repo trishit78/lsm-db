@@ -17,8 +17,8 @@ func main() {
 	db,err:=lsmdb.NewDB(*configPath)
 	if err!=nil{
 		log.Fatalf("Failed to create database: %v",err)
-		defer db.Close()
 	}
+	defer db.Close()
 
 	sc:=bufio.NewScanner(os.Stdin)
 	fmt.Println("LSM Database CLI")
